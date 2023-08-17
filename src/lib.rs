@@ -1,5 +1,6 @@
 use cosmic_text::{SubpixelBin, SwashImage};
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
+use std::sync::Arc;
 
 mod path;
 use path::*;
@@ -27,6 +28,8 @@ pub mod atlas;
 mod glyphs;
 use glyphs::GlyphCache;
 
+use wgpu::util::DeviceExt;
+
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 struct Uniforms {
@@ -35,6 +38,11 @@ struct Uniforms {
 
 #[derive(Copy, Clone, Debug)]
 pub struct PaintIndex {
+    index: usize,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ImageIndex {
     index: usize,
 }
 
@@ -64,9 +72,12 @@ impl Scissor {
 }
 
 pub struct Vger {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
     scenes: [Scene; 3],
     cur_scene: usize,
     cur_layer: usize,
+    cur_z_index: i32,
     tx_stack: Vec<LocalToWorld>,
     scissor_stack: Vec<Scissor>,
     device_px_ratio: f32,
@@ -81,11 +92,19 @@ pub struct Vger {
     pen: LocalPoint,
     pub glyph_cache: GlyphCache,
     layout: Layout,
+    images: Vec<Option<wgpu::Texture>>,
+    image_bind_groups: Vec<Option<wgpu::BindGroup>>,
+    image_bind_group_layout: wgpu::BindGroupLayout,
+    default_image_bind_group: wgpu::BindGroup,
 }
 
 impl Vger {
     /// Create a new renderer given a device and output pixel format.
-    pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        texture_format: wgpu::TextureFormat,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
@@ -93,7 +112,11 @@ impl Vger {
             ))),
         });
 
-        let scenes = [Scene::new(device), Scene::new(device), Scene::new(device)];
+        let scenes = [
+            Scene::new(&device),
+            Scene::new(&device),
+            Scene::new(&device),
+        ];
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -144,12 +167,28 @@ impl Vger {
                 label: Some("uniform_bind_group_layout"),
             });
 
-        let glyph_cache = GlyphCache::new(device);
+        let image_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                }],
+                label: Some("image_bind_group_layout"),
+            });
+
+        let glyph_cache = GlyphCache::new(&device);
 
         let mask_texture_view = glyph_cache.mask_atlas.create_view();
         let color_texture_view = glyph_cache.color_atlas.create_view();
+        let image_texture_view = glyph_cache.image_atlas.create_view();
 
-        let uniforms = GPUVec::new_uniforms(device, "uniforms");
+        let uniforms = GPUVec::new_uniforms(&device, "uniforms");
 
         let glyph_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("glyph"),
@@ -191,11 +230,21 @@ impl Vger {
             label: Some("vger bind group"),
         });
 
+        let default_image_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &image_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&image_texture_view),
+            }],
+            label: Some("vger default image bind group"),
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[
-                &Scene::bind_group_layout(device),
+                &Scene::bind_group_layout(&device),
                 &uniform_bind_group_layout,
+                &image_bind_group_layout,
             ],
             push_constant_ranges: &[],
         });
@@ -239,9 +288,12 @@ impl Vger {
         let layout = Layout::new(CoordinateSystem::PositiveYUp);
 
         Self {
+            device,
+            queue,
             scenes,
             cur_scene: 0,
             cur_layer: 0,
+            cur_z_index: 0,
             tx_stack: vec![],
             scissor_stack: vec![],
             device_px_ratio: 1.0,
@@ -256,6 +308,10 @@ impl Vger {
             pen: LocalPoint::zero(),
             glyph_cache,
             layout,
+            images: vec![],
+            image_bind_groups: vec![],
+            image_bind_group_layout,
+            default_image_bind_group,
         }
     }
 
@@ -294,14 +350,12 @@ impl Vger {
     }
 
     /// Encode all rendering to a command buffer.
-    pub fn encode(
-        &mut self,
-        device: &wgpu::Device,
-        render_pass: &wgpu::RenderPassDescriptor,
-        queue: &wgpu::Queue,
-    ) {
+    pub fn encode(&mut self, render_pass: &wgpu::RenderPassDescriptor) {
+        let device = &self.device;
+        let queue = &self.queue;
         self.scenes[self.cur_scene].update(device, queue);
         self.uniforms.update(device, queue);
+        let mut current_texture = -1;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("vger encoder"),
@@ -321,11 +375,49 @@ impl Vger {
             );
 
             rpass.set_bind_group(1, &self.uniform_bind_group, &[]);
+            rpass.set_bind_group(2, &self.default_image_bind_group, &[]);
 
-            let n = self.scenes[self.cur_scene].prims[self.cur_layer].len();
-            // println!("encoding {:?} prims", n);
+            let scene = &self.scenes[self.cur_scene];
+            let n = scene.prims[self.cur_layer].len();
+            let mut m: u32 = 0;
+            let mut start: u32 = 0;
 
-            rpass.draw(/*vertices*/ 0..4, /*instances*/ 0..(n as u32))
+            for i in 0..n {
+                let prim = &scene.prims[self.cur_layer][i];
+                let image_id = scene.paints[prim.paint as usize].image;
+
+                // Image changed, render.
+                if image_id >= 0 && image_id != current_texture {
+                    // println!("image changed: encoding {:?} prims", m);
+                    if m > 0 {
+                        rpass.draw(
+                            /*vertices*/ 0..4,
+                            /*instances*/ start..(start + m),
+                        );
+                    }
+
+                    current_texture = image_id;
+                    rpass.set_bind_group(
+                        2,
+                        self.image_bind_groups[image_id as usize].as_ref().unwrap(),
+                        &[],
+                    );
+
+                    start += m;
+                    m = 0;
+                }
+
+                m += 1;
+            }
+
+            // println!("encoding {:?} prims", m);
+
+            if m > 0 {
+                rpass.draw(
+                    /*vertices*/ 0..4,
+                    /*instances*/ start..(start + m),
+                )
+            }
         }
         queue.submit(Some(encoder.finish()));
 
@@ -777,8 +869,7 @@ impl Vger {
             for line in lines {
                 let mut rect = LocalRect::zero();
 
-                for i in line.glyph_start..line.glyph_end {
-                    let glyph = glyphs[i];
+                for glyph in &glyphs[line.glyph_start..line.glyph_end] {
                     rect = rect.union(&LocalRect::new(
                         [glyph.x, glyph.y].into(),
                         [glyph.width as f32, glyph.height as f32].into(),
@@ -841,6 +932,10 @@ impl Vger {
         }
     }
 
+    pub fn set_z_index(&mut self, z_index: i32) {
+        self.cur_z_index = z_index;
+    }
+
     /// Gets the current transform.
     pub fn current_transform(&self) -> LocalToWorld {
         *self.tx_stack.last().unwrap()
@@ -897,6 +992,95 @@ impl Vger {
             outer_color,
             glow,
         ))
+    }
+
+    /// Create an image from pixel data in memory.
+    /// Must be RGBA8.
+    pub fn create_image_pixels(&mut self, data: &[u8], width: u32, height: u32) -> ImageIndex {
+        let texture_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        let texture_desc = wgpu::TextureDescriptor {
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            label: Some("lyte image"),
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+        };
+
+        let texture = self.device.create_texture(&texture_desc);
+
+        let buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Temp Buffer"),
+                contents: data,
+                usage: wgpu::BufferUsages::COPY_SRC,
+            });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("texture_buffer_copy_encoder"),
+            });
+
+        let image_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        encoder.copy_buffer_to_texture(
+            wgpu::ImageCopyBuffer {
+                buffer: &buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width * 4),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                aspect: wgpu::TextureAspect::All,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            image_size,
+        );
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        let index = ImageIndex {
+            index: self.images.len(),
+        };
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        self.images.push(Some(texture));
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.image_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            }],
+            label: Some("vger bind group"),
+        });
+
+        self.image_bind_groups.push(Some(bind_group));
+
+        index
+    }
+
+    pub fn delete_image(&mut self, image: ImageIndex) {
+        self.images[image.index] = None;
+        self.image_bind_groups[image.index] = None;
     }
 }
 

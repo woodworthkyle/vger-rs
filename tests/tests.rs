@@ -5,6 +5,12 @@ use vger::*;
 extern crate rand;
 mod common;
 use common::*;
+use std::sync::Arc;
+
+fn setup() -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
+    let (device, queue) = block_on(common::setup());
+    (Arc::new(device), Arc::new(queue))
+}
 
 #[test]
 fn test_color_hex() {
@@ -26,9 +32,13 @@ fn test_color_hex() {
 
 #[test]
 fn fill_circle() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
     let cyan = vger.color_paint(Color::CYAN);
@@ -41,9 +51,13 @@ fn fill_circle() {
 
 #[test]
 fn fill_circle_array() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
     let cyan = vger.color_paint(Color::CYAN);
@@ -57,9 +71,13 @@ fn fill_circle_array() {
 
 #[test]
 fn fill_circle_translate() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
     let cyan = vger.color_paint(Color::CYAN);
@@ -71,9 +89,13 @@ fn fill_circle_translate() {
 
 #[test]
 fn fill_rect() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
     let cyan = vger.color_paint(Color::CYAN);
@@ -84,9 +106,13 @@ fn fill_rect() {
 
 #[test]
 fn fill_rect_gradient() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -105,9 +131,13 @@ fn fill_rect_gradient() {
 
 #[test]
 fn stroke_rect_gradient() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -138,9 +168,13 @@ fn stroke_rect_gradient() {
 
 #[test]
 fn stroke_arc_gradient() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -166,9 +200,13 @@ fn stroke_arc_gradient() {
 
 #[test]
 fn segment_stroke_gradient() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -193,9 +231,13 @@ fn segment_stroke_gradient() {
 
 #[test]
 fn bezier_stroke_gradient() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -219,14 +261,18 @@ fn bezier_stroke_gradient() {
 }
 
 fn rand2<T: rand::Rng>(rng: &mut T) -> LocalPoint {
-    LocalPoint::new(rng.gen_range(0.0, 512.0), rng.gen_range(0.0, 512.0))
+    LocalPoint::new(rng.gen_range(0.0..512.0), rng.gen_range(0.0..512.0))
 }
 
 #[test]
 fn path_fill() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -252,9 +298,13 @@ fn path_fill() {
 
 #[test]
 fn text() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -268,9 +318,13 @@ fn text() {
 
 #[test]
 fn text_small() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -293,9 +347,13 @@ fn text_small() {
 
 #[test]
 fn text_scale() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(256.0, 256.0, 2.0);
 
@@ -318,9 +376,13 @@ fn text_scale() {
 
 #[test]
 fn text_box() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -352,9 +414,13 @@ fn text_box() {
 
 #[test]
 fn test_scissor() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 2.0);
 
@@ -369,9 +435,13 @@ fn test_scissor() {
 
 #[test]
 fn test_scissor_text() {
-    let (device, queue) = block_on(setup());
+    let (device, queue) = setup();
 
-    let mut vger = Vger::new(&device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
 
     vger.begin(512.0, 512.0, 1.0);
 
@@ -391,4 +461,97 @@ fn test_scissor_text() {
     let png_name = "text_box_scissor.png";
     render_test(&mut vger, &device, &queue, png_name, true);
     assert!(png_not_black(png_name));
+}
+
+#[test]
+fn segment_stroke_stress() {
+    let (device, queue) = setup();
+
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
+
+    vger.begin(512.0, 512.0, 1.0);
+
+    let paint = vger.linear_gradient([0.0, 0.0], [512.0, 512.0], Color::CYAN, Color::MAGENTA, 0.0);
+
+    for _ in 0..100000 {
+        let mut rng = rand::thread_rng();
+        let a = rand2(&mut rng);
+        let b = rand2(&mut rng);
+
+        vger.stroke_segment(a, b, 4.0, paint);
+    }
+
+    render_test(
+        &mut vger,
+        &device,
+        &queue,
+        "segment_stroke_stress.png",
+        false,
+    );
+}
+
+#[test]
+fn segment_stroke_vertical() {
+    let (device, queue) = setup();
+
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
+
+    vger.begin(512.0, 512.0, 1.0);
+
+    let paint = vger.linear_gradient(
+        [100.0, 100.0],
+        [100.0, 200.0],
+        Color::CYAN,
+        Color::MAGENTA,
+        0.0,
+    );
+
+    vger.stroke_segment([100.0, 100.0], [100.0, 200.0], 4.0, paint);
+
+    render_test(
+        &mut vger,
+        &device,
+        &queue,
+        "segment_stroke_vertical.png",
+        false,
+    );
+}
+
+#[test]
+fn segment_stroke_horizontal() {
+    let (device, queue) = setup();
+
+    let mut vger = Vger::new(
+        device.clone(),
+        queue.clone(),
+        wgpu::TextureFormat::Rgba8UnormSrgb,
+    );
+
+    vger.begin(512.0, 512.0, 1.0);
+
+    let paint = vger.linear_gradient(
+        [100.0, 100.0],
+        [200.0, 100.0],
+        Color::CYAN,
+        Color::MAGENTA,
+        0.0,
+    );
+
+    vger.stroke_segment([100.0, 100.0], [200.0, 100.0], 4.0, paint);
+
+    render_test(
+        &mut vger,
+        &device,
+        &queue,
+        "segment_stroke_horizontal.png",
+        false,
+    );
 }

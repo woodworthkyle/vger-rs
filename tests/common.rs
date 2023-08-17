@@ -7,7 +7,7 @@ pub async fn setup() -> (wgpu::Device, wgpu::Queue) {
 
     let instance = wgpu::Instance::new(instance_desc);
 
-    let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, wgpu::Backends::all(), None)
+    let adapter = wgpu::util::initialize_adapter_from_env_or_default(&instance, None)
         .await
         .expect("No suitable GPU adapters found on the system!");
 
@@ -60,8 +60,8 @@ pub async fn create_png(
 
         let mut png_encoder = png::Encoder::new(
             File::create(png_output_path).unwrap(),
-            texture_extent.width as u32,
-            texture_extent.height as u32,
+            texture_extent.width,
+            texture_extent.height,
         );
         png_encoder.set_depth(png::BitDepth::Eight);
         png_encoder.set_color(match texture_descriptor.format {
@@ -115,9 +115,7 @@ fn get_texture_data(
                 buffer: &output_buffer,
                 layout: wgpu::ImageDataLayout {
                     offset: 0,
-                    bytes_per_row: Some(
-                        std::num::NonZeroU32::new(texture_extent.width * bytes_per_pixel).unwrap(),
-                    ),
+                    bytes_per_row: Some(texture_extent.width * bytes_per_pixel),
                     rows_per_image: None,
                 },
             },
@@ -179,7 +177,7 @@ pub fn render_test(
         depth_stencil_attachment: None,
     };
 
-    vger.encode(device, &desc, queue);
+    vger.encode(&desc);
 
     let output_buffer = get_texture_data(&texture_desc, device, queue, &render_texture);
 
