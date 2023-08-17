@@ -426,7 +426,11 @@ impl Vger {
     }
 
     fn render(&mut self, prim: Prim) {
-        self.scenes[self.cur_scene].prims[self.cur_layer].push(prim);
+        let prims = self.scenes[self.cur_scene]
+            .depthed_prims
+            .entry(self.cur_z_index)
+            .or_default();
+        prims.push(prim);
     }
 
     /// Fills a circle.
@@ -657,6 +661,8 @@ impl Vger {
 
             self.render(prim);
         }
+
+        self.path_scanner.segments.clear();
     }
 
     fn setup_layout(&mut self, text: &str, size: u32, max_width: Option<f32>) {
