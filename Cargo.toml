@@ -20,7 +20,7 @@ wgpu = "0.17.0"
 euclid = "0.22.7"
 fontdue = "0.7.2"
 rect_packer = "0.2.1"
-cosmic-text = { git = "https://github.com/lapce/cosmic-text", rev = "96858440532d1e5ae2e50df734e44322b426d0de" }
+cosmic-text = { git = "https://github.com/lapce/cosmic-text", rev = "23555c6abf596c9a7fb1d4e604bf2711b0e58ed8" }
 # cosmic-text = { path = "../cosmic-text" }
 
 [dev-dependencies]
