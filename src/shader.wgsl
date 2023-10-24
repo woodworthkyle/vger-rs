@@ -688,8 +688,8 @@ fn fs_main(
     // Look up glyph alpha (if not a glyph, still have to because of wgsl).
     // let a = textureSample(glyph_atlas, samp, (in.t+0.5)/1024.0).r;
     // let mask = textureLoad(glyph_atlas, vec2<i32>(in.t), 0);
-    let mask = textureSample(glyph_atlas, samp, in.t/4096.0);
-    let color_mask = textureSample(color_atlas, color_samp, in.t/4096.0);
+    let mask = textureSample(glyph_atlas, samp, in.t/8192.0);
+    let color_mask = textureSample(color_atlas, color_samp, in.t/8192.0);
 
     // Look up image color (if no active image, still have to because of wgsl).
     // Note that we could use a separate shader if that's a perf hit.
