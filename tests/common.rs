@@ -1,6 +1,7 @@
 use futures::executor::block_on;
 use std::fs::File;
 use vger::*;
+use wgpu::StoreOp;
 
 pub async fn setup() -> (wgpu::Device, wgpu::Queue) {
     let instance_desc = wgpu::InstanceDescriptor::default();
@@ -171,10 +172,12 @@ pub fn render_test(
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                store: true,
+                store: StoreOp::Discard,
             },
         })],
         depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
     };
 
     vger.encode(&desc);
